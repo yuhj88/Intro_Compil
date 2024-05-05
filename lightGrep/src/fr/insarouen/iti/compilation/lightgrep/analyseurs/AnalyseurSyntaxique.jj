@@ -1,0 +1,201 @@
+options {
+  LOOKAHEAD = 1;
+  CHOICE_AMBIGUITY_CHECK = 2;
+  OTHER_AMBIGUITY_CHECK = 1;
+  STATIC = false;
+  DEBUG_PARSER = false;
+  DEBUG_LOOKAHEAD = false;
+  DEBUG_TOKEN_MANAGER = false;
+  ERROR_REPORTING = true;
+  JAVA_UNICODE_ESCAPE = false;
+  UNICODE_INPUT = false;
+  IGNORE_CASE = true;
+  USER_TOKEN_MANAGER = false;
+  USER_CHAR_STREAM = false;
+  BUILD_PARSER = true;
+  BUILD_TOKEN_MANAGER = true;
+  SANITY_CHECK = true;
+  FORCE_LA_CHECK = false;
+}
+
+PARSER_BEGIN(AnalyseurSyntaxique)
+package fr.insarouen.iti.compilation.lightgrep.analyseurs;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+
+import fr.insarouen.iti.compilation.lightgrep.automate.Lettre;
+import fr.insarouen.iti.compilation.lightgrep.automate.LettreException;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.ExpressionRationnelle;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.ExpressionRationnelleElementaire;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.ZeroAN;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.ZeroOuUn;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.UnAN;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.Concatenation;
+import fr.insarouen.iti.compilation.lightgrep.arbreSyntaxiqueAbstrait.Union;
+
+
+public class AnalyseurSyntaxique {
+}
+
+PARSER_END(AnalyseurSyntaxique)
+
+
+TOKEN : {
+    <CARACTERE_ECHAPE:"\\|" | "\\$" | "\\(" | "\\)" | "\\[" | "\\]" | "\\*" | "\\?" | "\\." | "\\-" | "\\$">
+    | <OU:"|">
+    | <PARAG:"(">
+    | <PARAD:")">
+    | <CROCHETG:"[">
+    | <CROCHETD:"]">
+    | <ZERO_N:"*">
+    | <ZERO_UN:"?">
+    | <UN_N:"+">
+    | <JOKER:".">
+    | <TIRET:"-">
+    | <CIRCONFLEXE:"^">
+    | <FIN_DE_LIGNE:"$">
+    | <CARACTERE:["a"-"z","A"-"Z","0"-"9","!","\"","#","%","&",",","/",":",";",
+            "<","=",">","?","@","^","_","`","{","|","}","~"]>
+}
+
+ExpressionRationnelle expressionRationnelle() throws LettreException :
+// @u:start expressionRationnelle
+
+{
+  ExpressionRationnelle res=null;
+  ExpressionRationnelle eRC;
+  List<ExpressionRationnelle> list = new ArrayList<ExpressionRationnelle>();
+}
+{
+  eRC = expressionsRationnellesConcatenees()
+  { list.add(eRC); }
+  (
+    <OU> eRC = expressionsRationnellesConcatenees() { 
+    list.add(eRC);}
+  )*
+  {
+    if (list.size() == 1){
+      res = list.get(0);
+    } else {
+      res = new Concatenation(list);
+    }
+    return res;}
+}
+
+// @u:end expressionRationnelle
+
+ExpressionRationnelle expressionsRationnellesConcatenees()  throws LettreException :
+// @u:start expressionsRationnellesConcatenees
+
+{
+  ExpressionRationnelle res=null;
+  ExpressionRationnelle eRB;
+  List<ExpressionRationnelle> list = new ArrayList<ExpressionRationnelle>();
+}
+{
+  (
+  eRB = expressionRationnelleBasique(){ /* d'après la dérécursivité, on détermine la règle sous forme : "⟨erc⟩ ::= ⟨erb⟩⟨erb⟩*" */ list.add(eRB); }
+  )*
+  {return res = new Concatenation(list);}
+}
+
+// @u:end expressionsRationnellesConcatenees
+
+ExpressionRationnelle expressionRationnelleBasique() throws LettreException :
+// @u:start expressionRationnelleBasique
+
+{
+  ExpressionRationnelle res=null;
+  ExpressionRationnelle eRe;
+}
+{
+  (
+    LOOKAHEAD(3) eRe = expressionRationnelleElementaire() { /* ⟨ere⟩ */ res = eRe;}
+    | LOOKAHEAD(3) eRe = expressionRationnelleElementaire() <ZERO_N> { /* ⟨ere⟩ ‘*’ */ res = eRe;}
+    | LOOKAHEAD(3) eRe = expressionRationnelleElementaire() <ZERO_UN> { /* ⟨ere⟩ ‘?’ */ res = eRe;}
+    | LOOKAHEAD(3) eRe = expressionRationnelleElementaire() <UN_N> { /* ⟨ere⟩ ‘+’ */ res = eRe;}
+  )
+  {return res;}
+}
+
+// @u:end expressionRationnelleBasique
+
+ExpressionRationnelle expressionRationnelleElementaire() throws LettreException :
+// @u:start expressionRationnelleElementaire
+
+{
+  ExpressionRationnelle res=null;
+  ExpressionRationnelle er;
+  Lettre lettre;
+  Set<Lettre> ensLettre;
+}
+{
+  (
+    <PARAG> er = expressionRationnelle() <PARAD> { /* ‘(’ ⟨er ⟩ ‘)’ */ 
+    res = er;}
+    | lettre = lettre() { /* ⟨lettre⟩ */ res = new ExpressionRationnelleElementaire(lettre);}
+    | <JOKER> { /* ‘.’ */}
+    | LOOKAHEAD(2) <CROCHETG> ensLettre = ensembleDeLettres() <CROCHETD> { /* ‘[’ ⟨ens-lettres⟩ ‘]’ */
+    res = new ExpressionRationnelleElementaire(ensLettre);}
+    | LOOKAHEAD(2) <CROCHETG> <CIRCONFLEXE> ensLettre = ensembleDeLettres() <CROCHETD> { /* ‘[’ ‘^’ ⟨ens-lettres⟩ ‘]’ */
+    res = new ExpressionRationnelleElementaire(ensLettre);}
+  )
+  {return res;}}
+
+// @u:end expressionRationnelleElementaire
+
+Set<Lettre> ensembleDeLettres() throws LettreException :
+// @u:start ensembleDeLettres
+
+{
+  Set<Lettre> res= new HashSet<Lettre>();
+  Set<Lettre> eleEnsLettre;
+}
+{
+  ( 
+    eleEnsLettre = elementsEnsembleDeLettres(){ /* d'après la dérécursivité, on détermine la règle sous forme : "⟨ens-lettres⟩ ::= ⟨element-ens-lettres⟩⟨element-ens-lettres⟩*" */
+    res.addAll(eleEnsLettre);}
+  )*
+  { return res; }
+} 
+
+// @u:end ensembleDeLettres
+
+Set<Lettre> elementsEnsembleDeLettres() throws LettreException :
+// @u:start elementsEnsembleDeLettres
+
+{
+  Set<Lettre> res= new HashSet<Lettre>();
+  Lettre lettre1, lettre2;
+}
+{
+  (
+    lettre1 = lettre()
+    (
+      <TIRET> lettre2 = lettre() { /* ⟨lettre⟩ ‘-’ ⟨lettre⟩ */
+      Set<Lettre> ensLettre = Lettre.toutesLesLettresComprisesEntre(lettre1,lettre2);
+      res.addAll(ensLettre);}
+    | { /* lettre */ res.add(lettre1);}
+    )
+  )
+  {return res;}
+}
+
+// @u:end elementsEnsembleDeLettres
+
+Lettre lettre() :
+// @u:start lettre
+
+{
+  Lettre res=null;
+  Token t;
+}
+{
+  t = <CARACTERE> { /* caracteres-alphanumériques */ return res = new Lettre(t.image.charAt(0)); }
+  | t = <CARACTERE_ECHAPE> { /* caracteres-echapes */ return res = new Lettre(t.image.charAt(0)); }
+}
+
+// @u:end lettre
